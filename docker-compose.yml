@@ -6,6 +6,13 @@ services:
     restart: unless-stopped
     environment:
       RTSP_URL: ${RTSP_URL:?set RTSP_URL in .env}
+      MIC_NAME: ${MIC_NAME:-Mic 1}
+      RTSP_URL_2: ${RTSP_URL_2:-}
+      MIC_NAME_2: ${MIC_NAME_2:-Mic 2}
+      RTSP_URL_3: ${RTSP_URL_3:-}
+      MIC_NAME_3: ${MIC_NAME_3:-Mic 3}
+      RTSP_URL_4: ${RTSP_URL_4:-}
+      MIC_NAME_4: ${MIC_NAME_4:-Mic 4}
       LATITUDE: ${LATITUDE:?set LATITUDE in .env}
       LONGITUDE: ${LONGITUDE:?set LONGITUDE in .env}
       BIRD_GATE_THRESHOLD: ${BIRD_GATE_THRESHOLD:-0.96}

@@ -98,6 +98,7 @@ def healthz() -> dict:
 
 
 def _detection_payload(row: sqlite3.Row) -> dict:
+    mic = row["mic_name"] if "mic_name" in row.keys() else None
     return {
         "id": row["id"],
         "date": row["ts_utc"],
@@ -106,6 +107,8 @@ def _detection_payload(row: sqlite3.Row) -> dict:
         "scientific_name": row["scientific_name"] or "",
         "scientificName": row["scientific_name"] or "",
         "confidence": row["confidence"],
+        "mic_name": mic,
+        "micName": mic,
         "source": _source_block(),
     }
 
@@ -114,7 +117,8 @@ def _detection_payload(row: sqlite3.Row) -> dict:
 def detections(numResults: int = Query(600, ge=1, le=5000)) -> JSONResponse:
     with db() as conn:
         rows = conn.execute(
-            "SELECT id, ts_utc, species_code, common_name, scientific_name, confidence "
+            "SELECT id, ts_utc, species_code, common_name, scientific_name, "
+            "confidence, mic_name "
             "FROM detections ORDER BY id DESC LIMIT ?",
             (numResults,),
         ).fetchall()
@@ -139,7 +143,8 @@ async def _event_stream():
         try:
             with db() as conn:
                 rows = conn.execute(
-                    "SELECT id, ts_utc, species_code, common_name, scientific_name, confidence "
+                    "SELECT id, ts_utc, species_code, common_name, scientific_name, "
+                    "confidence, mic_name "
                     "FROM detections WHERE id > ? ORDER BY id ASC LIMIT 100",
                     (last_id,),
                 ).fetchall()

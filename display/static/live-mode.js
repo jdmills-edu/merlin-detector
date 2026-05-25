@@ -101,10 +101,12 @@
   function tileFromDetection(d, addedAt){
     const common     = d.common_name || d.commonName || "Unknown";
     const scientific = d.scientific_name || d.scientificName || "";
+    const mic        = d.mic_name || d.micName || "";
     const key        = (scientific || common).toLowerCase().trim();
     const latest     = d.date || d.ts_utc || new Date().toISOString();
     return {
       key, common, scientific, latest,
+      mics: mic ? [mic] : [],   // most-recent first
       addedAt: addedAt || Date.now(),
       imageUrl: null,
       _bird: {
@@ -118,12 +120,31 @@
     };
   }
 
+  /* Merge a new detection of the same species into an existing tile:
+   * promote the firing mic to the front of the mic list and reset its
+   * TTL. Returns true if `t` was merged into `existing`. */
+  function mergeMics(existing, t){
+    const mic = t.mics[0];
+    if(mic){
+      const lower = mic.toLowerCase();
+      existing.mics = [mic, ...existing.mics.filter(m => m.toLowerCase() !== lower)];
+    }
+    existing.latest = t.latest;
+    existing.addedAt = t.addedAt;
+    existing.expiring = false;
+  }
+
   function addDetection(d){
     const t = tileFromDetection(d);
-    tiles = tiles.filter(x => x.key !== t.key);   // dedup by species
-    tiles.unshift(t);
-    if(tiles.length > MAX_TILES) tiles.length = MAX_TILES;
-    fetchImage(t);
+    const existing = tiles.find(x => x.key === t.key);
+    if(existing){
+      mergeMics(existing, t);
+      tiles = [existing, ...tiles.filter(x => x !== existing)];
+    } else {
+      tiles.unshift(t);
+      if(tiles.length > MAX_TILES) tiles.length = MAX_TILES;
+      fetchImage(t);
+    }
     renderGrid();
   }
 
@@ -174,15 +195,24 @@
       const r = await fetch("/api/v2/detections?numResults=" + (MAX_TILES * 4));
       const list = await r.json();
       const cutoff = Date.now() - TILE_TTL_MS;
-      const seen = new Set();
+      const bySpecies = new Map();
       for(const d of list){
         const ts = Date.parse(d.date || d.ts_utc || "") || 0;
         if(ts < cutoff) continue;
         const t = tileFromDetection(d, ts);
-        if(seen.has(t.key)) continue;
-        seen.add(t.key);
+        const existing = bySpecies.get(t.key);
+        if(existing){
+          // detections come newest-first, so existing is more recent — just
+          // append this older firing's mic to the tail.
+          const mic = t.mics[0];
+          if(mic && !existing.mics.some(m => m.toLowerCase() === mic.toLowerCase())){
+            existing.mics.push(mic);
+          }
+          continue;
+        }
+        if(bySpecies.size >= MAX_TILES) continue;
+        bySpecies.set(t.key, t);
         tiles.push(t);
-        if(tiles.length >= MAX_TILES) break;
       }
       tiles.forEach(fetchImage);
       renderGrid();
@@ -224,10 +254,12 @@
         parts.push('<div class="tile empty"></div>');
         continue;
       }
+      const micLabel = (t.mics && t.mics.length) ? t.mics.join(" \u00b7 ") : "";
       parts.push(
         '<div class="tile" data-i="' + i + '">' +
           '<div class="tile-img' + (t.imageUrl ? '' : ' placeholder') + '"></div>' +
           '<div class="tile-name">' + escapeHtml(t.common) + '</div>' +
+          (micLabel ? '<div class="tile-mic">' + escapeHtml(micLabel) + '</div>' : '') +
         '</div>'
       );
     }

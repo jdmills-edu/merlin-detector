@@ -106,3 +106,14 @@ body.view-grid #statusText {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.tile-mic {
+  margin-top: .2rem;
+  color: rgba(245, 236, 217, .6);
+  font: 400 .8rem/1.2 Georgia, "Iowan Old Style", serif;
+  letter-spacing: .02em;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

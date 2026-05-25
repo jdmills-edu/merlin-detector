@@ -14,12 +14,12 @@ CHUNK_SAMPLES = 65920  # ~2.99s, the sound_id model's audio context window
 READ_STALL_SECONDS = float(os.environ.get("READ_STALL_SECONDS", "20"))
 
 
-def open_ffmpeg(rtsp_url: str) -> subprocess.Popen:
-    cmd = [
-        "ffmpeg",
-        "-hide_banner", "-loglevel", "warning", "-nostdin",
-        "-rtsp_transport", "tcp",
-        "-i", rtsp_url,
+def open_ffmpeg(url: str) -> subprocess.Popen:
+    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "warning", "-nostdin"]
+    if url.startswith("rtsp://"):
+        cmd += ["-rtsp_transport", "tcp"]
+    cmd += [
+        "-i", url,
         "-vn",
         "-ac", "1",
         "-ar", str(SAMPLE_RATE),
