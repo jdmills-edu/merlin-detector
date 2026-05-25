@@ -1,0 +1,6 @@
+.env
+data/
+clips/
+models/
+__pycache__/
+*.pyc

@@ -1,0 +1,108 @@
+/* Live grid mode — overlays the journal when active. */
+
+/* The masthead status block ("Live · X species today") doubles as the
+   mode toggle. Make it look click-able and bump the hit-area. */
+.status-toggle {
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  padding: 4px 8px;
+  margin: -4px -8px;
+  border-radius: 6px;
+  transition: background .15s ease, color .15s ease;
+}
+.status-toggle:hover {
+  background: rgba(0, 0, 0, .04);
+}
+body.view-grid .status-toggle:hover {
+  background: rgba(245, 236, 217, .08);
+}
+
+.live-grid {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 4;     /* below the masthead (z:5) so the toggle stays clickable */
+  padding: 6rem 3rem 3rem;
+  background: #1c1812;
+  background-image:
+    radial-gradient(circle at 30% 10%, rgba(120, 90, 50, .12), transparent 60%),
+    radial-gradient(circle at 80% 90%, rgba(80, 60, 30, .14), transparent 55%);
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 1.5rem 2rem;
+  box-sizing: border-box;
+}
+body.view-grid .live-grid { display: grid; }
+
+/* Empty state: one centered "Listening…" headline. */
+body.view-grid .live-grid.listening {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.live-empty {
+  color: #f5ecd9;
+  font: 300 italic clamp(48px, 8vh, 92px)/1.1 "Fraunces", Georgia, serif;
+  letter-spacing: .015em;
+  opacity: .85;
+}
+
+/* While the journal's detail page is sliding in, step the grid aside so
+   the existing detail pane is visible. */
+body.view-grid.detail-open .live-grid { display: none; }
+
+/* In grid mode the masthead sits on a dark background — keep the brand
+   and status text legible. */
+body.view-grid .masthead {
+  background: linear-gradient(180deg, rgba(28, 24, 18, .55) 0%, transparent 100%);
+}
+body.view-grid .brand .name,
+body.view-grid .brand .context,
+body.view-grid .status,
+body.view-grid #statusText {
+  color: #f5ecd9 !important;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  cursor: pointer;
+  text-align: center;
+  min-width: 0;
+}
+/* Truly empty slots — keep their grid cell but render nothing visible. */
+.tile.empty { visibility: hidden; cursor: default; }
+
+.tile-img {
+  width: min(20vw, 22vh);
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  background: #2a2419 center / cover no-repeat;
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, .55),
+    inset 0 0 0 1px rgba(245, 236, 217, .08);
+  transition: transform .25s ease, box-shadow .25s ease;
+}
+.tile-img.placeholder {
+  background:
+    radial-gradient(circle at 35% 35%, #4a3f2c, #2a2419 70%);
+}
+.tile:not(.empty):hover .tile-img {
+  transform: scale(1.04);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, .65),
+    inset 0 0 0 1px rgba(245, 236, 217, .18);
+}
+
+.tile-name {
+  margin-top: 1rem;
+  color: #f5ecd9;
+  font: 500 1.05rem/1.25 Georgia, "Iowan Old Style", serif;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

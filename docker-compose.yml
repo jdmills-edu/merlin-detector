@@ -1,0 +1,51 @@
+services:
+  detector:
+    build: .
+    image: merlin-detector:local
+    container_name: merlin-detector
+    restart: unless-stopped
+    environment:
+      RTSP_URL: ${RTSP_URL:?set RTSP_URL in .env}
+      LATITUDE: ${LATITUDE:?set LATITUDE in .env}
+      LONGITUDE: ${LONGITUDE:?set LONGITUDE in .env}
+      BIRD_GATE_THRESHOLD: ${BIRD_GATE_THRESHOLD:-0.96}
+      INITIAL_SPECIES_THRESHOLD: ${INITIAL_SPECIES_THRESHOLD:-0.50}
+      UNLOCKED_SPECIES_THRESHOLD: ${UNLOCKED_SPECIES_THRESHOLD:-0.20}
+      UNLOCK_HITS_REQUIRED: ${UNLOCK_HITS_REQUIRED:-2}
+      GEO_THRESHOLD: ${GEO_THRESHOLD:-0.0005}
+      OVERLAP_SECONDS: ${OVERLAP_SECONDS:-1.5}
+      TZ: ${TZ:-America/New_York}
+    volumes:
+      - ./models:/models:ro
+      - ./data:/data
+
+  display:
+    build: ./display
+    image: birdnet-display:local
+    container_name: birdnet-display
+    restart: unless-stopped
+    depends_on:
+      - detector
+    environment:
+      DETECTIONS_DB: /data/detections.sqlite
+      SOURCE_DISPLAY_NAME: ${SOURCE_DISPLAY_NAME:-Tapo Backyard}
+      TZ: ${TZ:-America/New_York}
+    ports:
+      - "${DISPLAY_PORT:-8090}:8080"
+    volumes:
+      - ./data:/data:ro
+
+  mcp:
+    build: ./mcp
+    image: merlin-mcp:local
+    container_name: merlin-mcp
+    restart: unless-stopped
+    depends_on:
+      - detector
+    environment:
+      DETECTIONS_DB: /data/detections.sqlite
+      TZ: ${TZ:-America/New_York}
+    ports:
+      - "${MCP_PORT:-8091}:8080"
+    volumes:
+      - ./data:/data:ro
