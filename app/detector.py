@@ -71,6 +71,32 @@ def build_geo_mask(
     return mask
 
 
+def apply_exclusions(
+    mask: np.ndarray,
+    sound_labels: list[str],
+    name_map: dict,
+    exclude_csv: str,
+) -> None:
+    """Mutate `mask` in place: clear bits for species whose common name
+    contains any comma-separated substring in `exclude_csv` (case-insensitive).
+    Useful for filtering out e.g. backyard chickens that the model labels
+    as turkey/grouse."""
+    needles = [s.strip().lower() for s in exclude_csv.split(",") if s.strip()]
+    if not needles:
+        return
+    dropped: list[str] = []
+    for idx, code in enumerate(sound_labels):
+        if not mask[idx]:
+            continue
+        common, _ = name_for(code, name_map)
+        low = (common or "").lower()
+        if any(n in low for n in needles):
+            mask[idx] = False
+            dropped.append(common)
+    print(f"[geo] excluded {len(dropped)} species by name "
+          f"({', '.join(needles)}): {sorted(set(dropped))}", flush=True)
+
+
 class SharedState:
     """Mutable cross-thread state. Reassigning `geo_mask` is atomic in
     CPython; workers re-read the attribute each iteration."""
@@ -176,8 +202,10 @@ def main() -> None:
     print(f"[init] sound labels: {len(sound_labels)}  geo labels: {len(geo_labels)}  "
           f"taxonomy: {len(name_map)}", flush=True)
 
+    exclude_names = os.environ.get("EXCLUDE_NAMES", "turkey,grouse")
     geo_mask = build_geo_mask(geo_model, sound_labels, geo_labels,
                               latitude, longitude, geo_threshold)
+    apply_exclusions(geo_mask, sound_labels, name_map, exclude_names)
     shared = SharedState(geo_mask)
     inference_lock = threading.Lock()
 
@@ -209,8 +237,10 @@ def main() -> None:
             if not t.is_alive():
                 raise RuntimeError(f"stream worker {t.name} died")
         if time.monotonic() > geo_recompute_at:
-            shared.geo_mask = build_geo_mask(geo_model, sound_labels, geo_labels,
-                                             latitude, longitude, geo_threshold)
+            new_mask = build_geo_mask(geo_model, sound_labels, geo_labels,
+                                      latitude, longitude, geo_threshold)
+            apply_exclusions(new_mask, sound_labels, name_map, exclude_names)
+            shared.geo_mask = new_mask
             geo_recompute_at = time.monotonic() + 86400
 
 
