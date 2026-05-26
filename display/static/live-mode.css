@@ -117,3 +117,155 @@ body.view-grid #statusText {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ---- phone overrides ----
+   The upstream dashboard's mobile breakpoint is 760px, but its masthead +
+   stage padding still leave the hero image touching (or behind) the title
+   block, and the live-grid is hard-coded to 4 columns which overflows
+   below ~720px. Tighten everything for portrait phones. */
+@media (max-width: 760px) {
+  /* Masthead: add a soft opaque backing so content underneath doesn't
+     read through, and shrink the type so the brand + status pill fit
+     across a 320–430 viewport without overlapping. */
+  .masthead {
+    padding: calc(env(safe-area-inset-top, 0px) + 12px) 14px 12px !important;
+    gap: 10px;
+    /* Solid backing on phone — page 2's description scrolls inside .detail,
+       and a translucent gradient lets that text bleed through the title
+       block. Keep it opaque so the masthead reliably hides what's under it. */
+    background: #f5ecd9;
+    box-shadow: 0 6px 14px -10px rgba(40, 30, 12, .35);
+  }
+  body.view-grid .masthead {
+    background: #1c1812;
+    box-shadow: 0 6px 14px -10px rgba(0, 0, 0, .65);
+  }
+  .brand { gap: 9px; min-width: 0; flex: 1 1 auto; }
+  .brand svg { width: 20px; height: 20px; margin-top: 1px; }
+  .brand .titles { min-width: 0; }
+  .brand .name { font-size: 17px !important; }
+  .brand .context { font-size: 13px !important; }
+  .status {
+    flex: none;
+    font-size: 10px !important;
+    letter-spacing: .12em !important;
+    margin-top: 4px;
+  }
+  .status-toggle { padding: 4px 6px; margin: -4px -6px; }
+
+  /* Journal hero: shrink the bird frame and push it below the masthead
+     so the title block isn't fighting the image for space. */
+  .stage {
+    padding-top: 96px !important;
+    padding-bottom: 76px !important;  /* clear the .pageturn.more footer bar */
+    gap: 14px !important;
+    height: auto !important;
+    min-height: 100vh;
+  }
+  .frame {
+    max-width: 62vw !important;
+    max-height: 34vh !important;
+  }
+  .entry { max-width: 92vw !important; }
+  .name { font-size: clamp(34px, 9vw, 54px) !important; }
+  .pageturn.more { right: 18px !important; bottom: 18px !important; }
+  .pageturn.back { left: 18px !important; bottom: 18px !important; }
+
+  /* Detail page (page 2): stack image above text, allow internal vertical
+     scrolling, and give the title block enough top padding to clear the
+     fixed masthead so the species name isn't clipped behind it. */
+  .detail {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    gap: 18px !important;
+    height: 100vh !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    padding: 96px 18px 110px !important;  /* bottom clears the .pageturn.back chip */
+    scroll-padding-top: 96px;
+  }
+  /* The back/more buttons live inside .page, not .detail, so they don't
+     scroll with the content. On phone, where there's no margin to spare,
+     promote them to a full-width footer strip with solid backing — that
+     way bottom content can't read through them, and the tap target spans
+     the side of the screen rather than a tiny pill. */
+  .pageturn.more, .pageturn.back {
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    padding: 14px 22px calc(14px + env(safe-area-inset-bottom, 0px)) !important;
+    background: #f5ecd9;
+    box-shadow: 0 -8px 18px -12px rgba(40, 30, 12, .45);
+    border-radius: 0;
+  }
+  .pageturn.more { justify-content: flex-end; }
+  .pageturn.back { justify-content: flex-start; }
+  body.view-grid .pageturn.more,
+  body.view-grid .pageturn.back {
+    background: #1c1812;
+    color: #f5ecd9 !important;
+    box-shadow: 0 -8px 18px -12px rgba(0, 0, 0, .65);
+  }
+  .detail .dframe {
+    flex: 0 0 auto !important;
+    max-width: 100% !important;
+    width: min(78vw, 340px);
+    height: auto !important;
+    aspect-ratio: 4 / 3;
+    max-height: none !important;
+    margin: 0 auto;
+  }
+  .detail .dtext {
+    flex: 0 0 auto !important;
+    max-width: 100% !important;
+  }
+  .detail .dname {
+    font-size: clamp(28px, 8vw, 42px) !important;
+    line-height: 1.05 !important;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+  }
+  .detail .ddesc { max-width: none !important; }
+  .detail .dmap img { max-width: 100% !important; max-height: 28vh !important; }
+
+  /* Live grid: 2 columns on phones, with breathing room for the masthead
+     and tile names that can wrap rather than truncate to "Nort…". */
+  .live-grid {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(4, auto);
+    align-content: start;
+    padding: 5.5rem 1rem 1.5rem;
+    gap: 1.25rem 1rem;
+  }
+  .tile-img {
+    width: min(36vw, 18vh);
+  }
+  .tile-name {
+    font-size: .95rem;
+    margin-top: .55rem;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    line-height: 1.2;
+  }
+  .tile-mic {
+    font-size: .72rem;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+  .live-empty {
+    font-size: clamp(38px, 11vw, 62px);
+  }
+}
+
+/* Extra-tight breakpoint for ~320–360px (iPhone SE, small Androids). */
+@media (max-width: 360px) {
+  .brand svg { display: none; }
+  .brand .name { font-size: 16px !important; }
+  .brand .context { font-size: 12px !important; }
+  .status { font-size: 9.5px !important; }
+  .live-grid { padding: 5rem .75rem 1.25rem; gap: 1rem .75rem; }
+  .tile-img { width: 38vw; }
+}
