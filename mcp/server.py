@@ -19,12 +19,21 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 
 DB_PATH = Path(os.environ.get("DETECTIONS_DB", "/data/detections.sqlite"))
 LOCAL_TZ = ZoneInfo(os.environ.get("TZ", "America/New_York"))
 
-mcp = FastMCP("merlin-detector")
+# DNS-rebinding protection in the MCP SDK rejects all Host/Origin headers
+# except localhost by default, which breaks any deployment behind a
+# reverse proxy. Auth and edge filtering for this server are handled by
+# Cloudflare Access (service-token policy on birds.jdmills.io/mcp), so
+# the SDK-level check is redundant here.
+mcp = FastMCP(
+    "merlin-detector",
+    transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+)
 
 
 @contextmanager
