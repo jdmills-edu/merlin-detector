@@ -1,5 +1,121 @@
 /* Live grid mode — overlays the journal when active. */
 
+/* Disable the upstream "nightfall" blackout overlay. The dashboard still
+   runs its nightCheck() timer (and so will still refresh data at dawn),
+   but the dim curtain never paints — we want the display readable at any
+   hour. Hiding the element rather than patching JS keeps us upstream-safe. */
+.nightfall, .nightfall.on { display: none !important; }
+
+
+/* ---- Bird-call play buttons ----
+   Three placements share .call-btn: a pill on the journal page (light bg),
+   a matching pill on the detail page, and a circular overlay on each grid
+   tile. The .playing / .loading / .missing states are toggled by JS. */
+.call-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  cursor: pointer;
+  background: #2c241a;
+  color: #f5ecd9;
+  border-radius: 999px;
+  padding: 7px 16px 7px 13px;
+  font: 500 .82rem/1 Georgia, "Iowan Old Style", serif;
+  letter-spacing: .04em;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  -webkit-tap-highlight-color: transparent;
+  transition: background .15s ease, transform .12s ease, opacity .15s ease, color .15s ease;
+}
+.call-btn:hover  { background: #1c1812; }
+.call-btn:active { transform: scale(.97); }
+.call-btn:focus-visible { outline: 2px solid #c9a14a; outline-offset: 2px; }
+
+.call-btn .call-icon {
+  display: inline-block;
+  width: 10px;
+  height: 12px;
+  position: relative;
+}
+/* ▶ play triangle (default) */
+.call-btn .call-icon::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-left: 10px solid currentColor;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  width: 0; height: 0;
+}
+/* ❚❚ pause bars when playing */
+.call-btn.playing .call-icon::before {
+  border: 0;
+  width: 10px;
+  height: 12px;
+  background:
+    linear-gradient(currentColor, currentColor) left  / 3px 100% no-repeat,
+    linear-gradient(currentColor, currentColor) right / 3px 100% no-repeat;
+}
+/* spinner while we're hitting the API */
+.call-btn.loading .call-icon::before {
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-right-color: transparent;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  animation: call-spin .7s linear infinite;
+}
+@keyframes call-spin { to { transform: rotate(360deg); } }
+
+.call-btn.missing {
+  background: #7a6a4a;
+  color: #f5ecd9;
+}
+.call-btn.missing .call-label::after { content: " — none found"; }
+
+/* Journal page: light cream background, so use a dark pill. Place the
+   button under the binomial line and above the tagline. */
+.call-btn.journal-call {
+  margin: 10px 0 6px;
+}
+
+/* Detail page: same pill, sits beneath the scientific name. */
+.call-btn.detail-call {
+  margin: 8px 0 14px;
+}
+
+/* Grid tile overlay: circular play button on the bird portrait. The tile
+   already darkens on hover; the button uses a high-contrast cream chip so
+   it reads against any photo. */
+.tile-img { position: relative; }
+.call-btn.tile-call {
+  position: absolute;
+  right: 4%;
+  bottom: 4%;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  gap: 0;
+  border-radius: 50%;
+  background: rgba(28, 24, 18, .82);
+  color: #f5ecd9;
+  opacity: .9;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .55);
+}
+.call-btn.tile-call:hover { background: #1c1812; opacity: 1; }
+.call-btn.tile-call .call-icon { margin-left: 3px; }
+.call-btn.tile-call.playing .call-icon { margin-left: 0; }
+.call-btn.tile-call .call-label,
+.call-btn.tile-call.missing .call-label::after { display: none; }
+/* The grid view is the most-touched surface; let touch users always see
+   the button rather than gating it behind :hover. */
+@media (hover: none) {
+  .call-btn.tile-call { opacity: 1; }
+}
+
+
 /* The masthead status block ("Live · X species today") doubles as the
    mode toggle. Make it look click-able and bump the hit-area. */
 .status-toggle {
@@ -257,6 +373,18 @@ body.view-grid #statusText {
   }
   .live-empty {
     font-size: clamp(38px, 11vw, 62px);
+  }
+
+  /* Phone-friendly call buttons: slightly bigger pill for the journal/detail
+     pages, smaller circular overlay on the tighter tile portraits. */
+  .call-btn.journal-call,
+  .call-btn.detail-call {
+    padding: 9px 18px 9px 15px;
+    font-size: .88rem;
+  }
+  .call-btn.tile-call {
+    width: 36px;
+    height: 36px;
   }
 }
 

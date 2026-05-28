@@ -55,11 +55,185 @@
       }).observe(pages, {attributes: true, attributeFilter: ["class"]});
     }
 
+    // Inject the "play call" buttons on both the journal and detail pages.
+    // The journal rotates birds on a timer, so we also watch #commonName
+    // for changes and stop playback if the species swaps mid-clip.
+    setupCallButtons();
+
     // SSE stays open in both views: in journal mode it still drives the
     // status-dot pop animation, and in grid mode it also fills the tiles.
     openSSE();
 
     if(view === "grid") setView("grid");
+  }
+
+  /* ---- bird-call playback (xeno-canto via /api/v2/call) ----
+   *
+   * No local clips yet, so the "Play call" buttons fetch a reference
+   * recording from xeno-canto through the shim. Lookups are cached per
+   * species both server- and client-side. We use our own <audio> element
+   * (not the dashboard's #birdAudio) because the upstream code pauses
+   * #birdAudio when the detail page opens — which is exactly when the
+   * user is most likely to hit play.
+   */
+  const callCache    = new Map();   // sciKey → {url, recordist, license, page} | null
+  let   callAudio    = null;
+  let   callPlayingKey = null;
+  const callButtons  = new Set();   // every .call-btn we render, for state sync
+
+  function sciKey(scientific, common){
+    return (scientific || common || "").toLowerCase().trim();
+  }
+
+  function getCallAudio(){
+    if(callAudio) return callAudio;
+    callAudio = document.createElement("audio");
+    callAudio.id = "merlinCallAudio";
+    callAudio.preload = "none";
+    callAudio.crossOrigin = "anonymous";
+    const clear = () => setCallPlayingKey(null);
+    callAudio.addEventListener("ended", clear);
+    callAudio.addEventListener("error", clear);
+    callAudio.addEventListener("pause", () => {
+      // "pause" fires on natural end too; ignore unless we genuinely stopped.
+      if(callAudio.ended || callAudio.currentTime === 0) clear();
+    });
+    document.body.appendChild(callAudio);
+    return callAudio;
+  }
+
+  function setCallPlayingKey(key){
+    callPlayingKey = key;
+    callButtons.forEach(b => {
+      const matches = key && b.dataset.callKey === key;
+      b.classList.toggle("playing", !!matches);
+    });
+    // .loading / .missing are owned by playCall — don't touch them here, or
+    // we'd wipe the spinner off a button mid-fetch when the previous clip
+    // gets paused to make room.
+  }
+
+  async function lookupCall(scientific, common){
+    const key = sciKey(scientific, common);
+    if(!key) return null;
+    if(callCache.has(key)) return callCache.get(key);
+    // xeno-canto matches on Latin binomial; without one we can't reliably
+    // find a recording, so don't even ask.
+    if(!scientific){ callCache.set(key, null); return null; }
+    try{
+      const r = await fetch("/api/v2/call?scientific=" + encodeURIComponent(scientific));
+      if(!r.ok){ callCache.set(key, null); return null; }
+      const j = await r.json();
+      callCache.set(key, j);
+      return j;
+    } catch(e){
+      callCache.set(key, null);
+      return null;
+    }
+  }
+
+  async function playCall(scientific, common, btn){
+    const key = sciKey(scientific, common);
+    if(!key) return;
+    const el = getCallAudio();
+    if(btn) btn.dataset.callKey = key;
+
+    // Toggle: pressing play on whatever's already playing stops it.
+    if(callPlayingKey === key && !el.paused){
+      el.pause();
+      el.currentTime = 0;
+      setCallPlayingKey(null);
+      return;
+    }
+
+    el.pause();
+    el.currentTime = 0;
+    if(btn){ btn.classList.add("loading"); btn.classList.remove("missing"); }
+    const info = await lookupCall(scientific, common);
+    if(btn) btn.classList.remove("loading");
+
+    if(!info || !info.url){
+      if(btn){
+        btn.classList.add("missing");
+        setTimeout(() => btn.classList.remove("missing"), 2000);
+      }
+      return;
+    }
+
+    el.src = info.url;
+    try{
+      await el.play();
+      setCallPlayingKey(key);
+    } catch(e){
+      setCallPlayingKey(null);
+      if(btn){
+        btn.classList.add("missing");
+        setTimeout(() => btn.classList.remove("missing"), 2000);
+      }
+    }
+  }
+
+  function stopCall(){
+    if(!callAudio) return;
+    callAudio.pause();
+    callAudio.currentTime = 0;
+    setCallPlayingKey(null);
+  }
+
+  function makeCallButton(extraClass){
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "call-btn " + (extraClass || "");
+    btn.setAttribute("aria-label", "Play this bird's call");
+    btn.innerHTML =
+      '<span class="call-icon" aria-hidden="true"></span>' +
+      '<span class="call-label">Play call</span>';
+    callButtons.add(btn);
+    return btn;
+  }
+
+  function readSpecies(commonId, sciId){
+    return {
+      common:     (document.getElementById(commonId)?.textContent || "").trim(),
+      scientific: (document.getElementById(sciId)?.textContent || "").trim(),
+    };
+  }
+
+  function setupCallButtons(){
+    // Journal (page 1): drop the button between sciName and tagline.
+    const sciName = document.getElementById("sciName");
+    if(sciName && !sciName.parentElement.querySelector(".call-btn.journal-call")){
+      const btn = makeCallButton("journal-call");
+      btn.addEventListener("click", ev => {
+        ev.stopPropagation();
+        const {common, scientific} = readSpecies("commonName", "sciName");
+        playCall(scientific, common, btn);
+      });
+      sciName.insertAdjacentElement("afterend", btn);
+
+      // Stop playback (and clear the button's playing state) when the
+      // journal rotates to a different species mid-clip.
+      const commonName = document.getElementById("commonName");
+      if(commonName){
+        new MutationObserver(() => {
+          const {common, scientific} = readSpecies("commonName", "sciName");
+          const key = sciKey(scientific, common);
+          if(callPlayingKey && callPlayingKey !== key) stopCall();
+        }).observe(commonName, {childList: true, characterData: true, subtree: true});
+      }
+    }
+
+    // Detail (page 2): drop the button below detailSci.
+    const detailSci = document.getElementById("detailSci");
+    if(detailSci && !detailSci.parentElement.querySelector(".call-btn.detail-call")){
+      const btn = makeCallButton("detail-call");
+      btn.addEventListener("click", ev => {
+        ev.stopPropagation();
+        const {common, scientific} = readSpecies("detailName", "detailSci");
+        playCall(scientific, common, btn);
+      });
+      detailSci.insertAdjacentElement("afterend", btn);
+    }
   }
 
   /* Brief "pop" of the masthead status dot on every detection. Uses the
@@ -246,6 +420,11 @@
     }
 
     gridRoot.classList.remove("listening");
+    // The previous render's call buttons are about to be wiped out by
+    // innerHTML; drop them from the state-sync set so we don't leak refs.
+    callButtons.forEach(b => {
+      if(b.classList.contains("tile-call")) callButtons.delete(b);
+    });
     const parts = [];
     for(let i = 0; i < MAX_TILES; i++){
       const t = tiles[i];
@@ -257,7 +436,14 @@
       const micLabel = (t.mics && t.mics.length) ? t.mics.join(" \u00b7 ") : "";
       parts.push(
         '<div class="tile" data-i="' + i + '">' +
-          '<div class="tile-img' + (t.imageUrl ? '' : ' placeholder') + '"></div>' +
+          '<div class="tile-img' + (t.imageUrl ? '' : ' placeholder') + '">' +
+            '<button type="button" class="call-btn tile-call" ' +
+              'aria-label="Play call" ' +
+              'data-call-key="' + escapeHtml(t.key) + '">' +
+              '<span class="call-icon" aria-hidden="true"></span>' +
+              '<span class="call-label">Play call</span>' +
+            '</button>' +
+          '</div>' +
           '<div class="tile-name">' + escapeHtml(t.common) + '</div>' +
           (micLabel ? '<div class="tile-mic">' + escapeHtml(micLabel) + '</div>' : '') +
         '</div>'
@@ -277,6 +463,16 @@
         ev.stopPropagation();
         openDetail(t);
       });
+      const callBtn = el.querySelector(".call-btn.tile-call");
+      if(callBtn){
+        callButtons.add(callBtn);
+        if(callPlayingKey === callBtn.dataset.callKey) callBtn.classList.add("playing");
+        callBtn.addEventListener("click", ev => {
+          ev.stopPropagation();      // don't open the detail page
+          ev.preventDefault();
+          playCall(t.scientific, t.common, callBtn);
+        });
+      }
       // If this tile is already mid-fade, resume from where we are so a
       // mid-fade re-render (from a new SSE event) doesn't reset opacity.
       if(t.expiring){

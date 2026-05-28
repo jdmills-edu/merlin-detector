@@ -16,6 +16,8 @@ RUN mkdir -p static && \
       -o static/bird-dashboard.html && \
     sed -i 's|BIRDNET_GO_URL: ""|BIRDNET_GO_URL: window.location.origin|' static/bird-dashboard.html && \
     sed -i 's#if(!Array.isArray(list)||!list.length) continue;#if(!Array.isArray(list)) continue; if(!list.length){ buildPool([]); return true; }#' static/bird-dashboard.html && \
+    sed -i 's|BLACKOUT_START: "9:45pm"|BLACKOUT_START: ""|' static/bird-dashboard.html && \
+    sed -i 's|BLACKOUT_END:   "6:00am"|BLACKOUT_END:   ""|' static/bird-dashboard.html && \
     sed -i 's#</head>#<style>.quiet.on{position:fixed;inset:0;z-index:3;}</style><link rel="stylesheet" href="/static/live-mode.css"><link rel="icon" type="image/svg+xml" href="/static/favicon.svg"></head>#' static/bird-dashboard.html && \
     sed -i 's#</body>#<script src="/static/live-mode.js"></script></body>#' static/bird-dashboard.html
 

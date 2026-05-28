@@ -37,6 +37,7 @@ services:
       DETECTIONS_DB: /data/detections.sqlite
       SOURCE_DISPLAY_NAME: ${SOURCE_DISPLAY_NAME:-Tapo Backyard}
       TZ: ${TZ:-America/New_York}
+      XENO_CANTO_KEY: ${XENO_CANTO_KEY:-}
     ports:
       - "${DISPLAY_PORT:-8090}:8080"
     volumes:

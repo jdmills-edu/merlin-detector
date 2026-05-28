@@ -11,7 +11,10 @@ import asyncio
 import datetime as dt
 import json
 import os
+import re
 import sqlite3
+import urllib.parse
+import urllib.request
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -252,3 +255,82 @@ def species() -> JSONResponse:
 def audio(detection_id: int):
     # Clip capture not implemented yet — dashboard will gracefully skip audio.
     raise HTTPException(404, detail="audio clips not available yet")
+
+
+# ---- Bird-call lookup (xeno-canto proxy) ----
+# No local clips yet, so the "play call" buttons in the dashboard call this
+# endpoint, which proxies xeno-canto's v3 search API and returns the URL of
+# a reference recording. The proxy lives here (rather than in JS) so we can
+# (a) keep the XC API key off the client, (b) sidestep any future CORS
+# changes, and (c) cache lookups in-process — XC rate-limits and a single
+# species is only fetched once per shim lifetime.
+#
+# xeno-canto retired the unauthenticated v2 API; v3 requires a per-account
+# key. Register at https://xeno-canto.org/account and set XENO_CANTO_KEY.
+_CALL_CACHE: dict[str, dict | None] = {}
+_SCI_RE = re.compile(r"^[A-Za-z][A-Za-z\s\-']{1,80}$")
+_CALL_LOOKUP_TIMEOUT = float(os.environ.get("CALL_LOOKUP_TIMEOUT", "8"))
+_XC_KEY = os.environ.get("XENO_CANTO_KEY", "").strip()
+
+
+def _xc_query(scientific: str) -> str:
+    """Build a v3 `query` value from a Latin binomial. v3 wants
+    `gen:Genus+sp:species` rather than the free-text v2 syntax; if the
+    caller passed only a single token, fall back to a genus-only query."""
+    parts = scientific.strip().split()
+    if len(parts) >= 2:
+        return f"gen:{parts[0]} sp:{parts[1]} len:2-25"
+    return f"gen:{parts[0]} len:2-25"
+
+
+@app.get("/api/v2/call")
+def call_lookup(scientific: str = Query(..., min_length=3, max_length=80)) -> JSONResponse:
+    if not _XC_KEY:
+        raise HTTPException(
+            503,
+            detail="XENO_CANTO_KEY not configured on the server "
+                   "(register at https://xeno-canto.org/account)",
+        )
+    key = scientific.strip().lower()
+    if not _SCI_RE.match(scientific.strip()):
+        raise HTTPException(400, detail="invalid scientific name")
+    if key in _CALL_CACHE:
+        cached = _CALL_CACHE[key]
+        if cached is None:
+            raise HTTPException(404, detail="no recordings found")
+        return JSONResponse(cached)
+
+    params = urllib.parse.urlencode({
+        "query": _xc_query(scientific),
+        "per_page": "10",
+        "key": _XC_KEY,
+    })
+    api_url = f"https://xeno-canto.org/api/3/recordings?{params}"
+    try:
+        with urllib.request.urlopen(api_url, timeout=_CALL_LOOKUP_TIMEOUT) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            raise HTTPException(502, detail="xeno-canto rejected the API key (check XENO_CANTO_KEY)")
+        raise HTTPException(502, detail=f"xeno-canto lookup failed: HTTP {e.code}")
+    except Exception as e:
+        raise HTTPException(502, detail=f"xeno-canto lookup failed: {e}")
+
+    rec = next((r for r in (data.get("recordings") or []) if r.get("file")), None)
+    if not rec:
+        _CALL_CACHE[key] = None
+        raise HTTPException(404, detail="no recordings found")
+
+    file_url = rec["file"]
+    if file_url.startswith("//"):
+        file_url = "https:" + file_url
+    result = {
+        "url": file_url,
+        "recordist": rec.get("rec") or "",
+        "license": rec.get("lic") or "",
+        "id": rec.get("id") or "",
+        "page": f"https://xeno-canto.org/{rec.get('id')}" if rec.get("id") else "",
+        "source": "xeno-canto",
+    }
+    _CALL_CACHE[key] = result
+    return JSONResponse(result)
