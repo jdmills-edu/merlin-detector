@@ -90,7 +90,9 @@
     callAudio = document.createElement("audio");
     callAudio.id = "merlinCallAudio";
     callAudio.preload = "none";
-    callAudio.crossOrigin = "anonymous";
+    // No crossOrigin: xeno-canto's MP3 host doesn't send CORS headers, and
+    // we don't need pixel-level access (canvas/Web Audio) — plain playback
+    // of an opaque cross-origin source works without it.
     const clear = () => setCallPlayingKey(null);
     callAudio.addEventListener("ended", clear);
     callAudio.addEventListener("error", clear);

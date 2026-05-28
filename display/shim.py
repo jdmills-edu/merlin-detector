@@ -273,14 +273,64 @@ _CALL_LOOKUP_TIMEOUT = float(os.environ.get("CALL_LOOKUP_TIMEOUT", "8"))
 _XC_KEY = os.environ.get("XENO_CANTO_KEY", "").strip()
 
 
-def _xc_query(scientific: str) -> str:
+_QUALITY_RANK = {"A": 0, "B": 1, "C": 2, "D": 3, "E": 4}
+
+
+def _xc_query(scientific: str, quality_filter: str = "") -> str:
     """Build a v3 `query` value from a Latin binomial. v3 wants
     `gen:Genus+sp:species` rather than the free-text v2 syntax; if the
-    caller passed only a single token, fall back to a genus-only query."""
+    caller passed only a single token, fall back to a genus-only query.
+    `quality_filter` is appended verbatim (e.g. `q_gt:C` for A+B only)."""
     parts = scientific.strip().split()
-    if len(parts) >= 2:
-        return f"gen:{parts[0]} sp:{parts[1]} len:2-25"
-    return f"gen:{parts[0]} len:2-25"
+    base = f"gen:{parts[0]} sp:{parts[1]}" if len(parts) >= 2 else f"gen:{parts[0]}"
+    tail = " " + quality_filter if quality_filter else ""
+    return f"{base} len:2-25{tail}"
+
+
+def _parse_length(s: str) -> int:
+    """Parse xeno-canto's "M:SS" length string into seconds. Returns a
+    large sentinel on parse failure so the bad row sorts last."""
+    try:
+        m, sec = s.split(":")
+        return int(m) * 60 + int(sec)
+    except Exception:
+        return 10_000
+
+
+def _xc_fetch(query: str) -> list[dict]:
+    """Hit the v3 recordings endpoint and return the (possibly empty)
+    list of recordings. Raises HTTPException on transport errors."""
+    params = urllib.parse.urlencode({
+        "query": query,
+        "per_page": "25",
+        "key": _XC_KEY,
+    })
+    api_url = f"https://xeno-canto.org/api/3/recordings?{params}"
+    try:
+        with urllib.request.urlopen(api_url, timeout=_CALL_LOOKUP_TIMEOUT) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            raise HTTPException(502, detail="xeno-canto rejected the API key (check XENO_CANTO_KEY)")
+        raise HTTPException(502, detail=f"xeno-canto lookup failed: HTTP {e.code}")
+    except Exception as e:
+        raise HTTPException(502, detail=f"xeno-canto lookup failed: {e}")
+    return [r for r in (data.get("recordings") or []) if r.get("file")]
+
+
+def _pick_best(recs: list[dict]) -> dict | None:
+    """Rank by quality letter (A wins), then shorter recordings (less
+    ambient noise / hunting for the call), then by id for stability."""
+    if not recs:
+        return None
+    return min(
+        recs,
+        key=lambda r: (
+            _QUALITY_RANK.get((r.get("q") or "E").upper(), 9),
+            _parse_length(r.get("length") or ""),
+            int(r.get("id") or 0),
+        ),
+    )
 
 
 @app.get("/api/v2/call")
@@ -300,23 +350,16 @@ def call_lookup(scientific: str = Query(..., min_length=3, max_length=80)) -> JS
             raise HTTPException(404, detail="no recordings found")
         return JSONResponse(cached)
 
-    params = urllib.parse.urlencode({
-        "query": _xc_query(scientific),
-        "per_page": "10",
-        "key": _XC_KEY,
-    })
-    api_url = f"https://xeno-canto.org/api/3/recordings?{params}"
-    try:
-        with urllib.request.urlopen(api_url, timeout=_CALL_LOOKUP_TIMEOUT) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        if e.code == 401:
-            raise HTTPException(502, detail="xeno-canto rejected the API key (check XENO_CANTO_KEY)")
-        raise HTTPException(502, detail=f"xeno-canto lookup failed: HTTP {e.code}")
-    except Exception as e:
-        raise HTTPException(502, detail=f"xeno-canto lookup failed: {e}")
+    # Two-pass search: first ask only for A+B-grade recordings, which is
+    # the difference between a clean call and a noisy field clip with the
+    # bird buried under wind. If nothing comes back (rare species, or all
+    # XC has is hand-held phone audio), fall back to the unfiltered set
+    # rather than show "no recordings".
+    recs = _xc_fetch(_xc_query(scientific, "q_gt:C"))
+    if not recs:
+        recs = _xc_fetch(_xc_query(scientific))
 
-    rec = next((r for r in (data.get("recordings") or []) if r.get("file")), None)
+    rec = _pick_best(recs)
     if not rec:
         _CALL_CACHE[key] = None
         raise HTTPException(404, detail="no recordings found")
@@ -330,6 +373,9 @@ def call_lookup(scientific: str = Query(..., min_length=3, max_length=80)) -> JS
         "license": rec.get("lic") or "",
         "id": rec.get("id") or "",
         "page": f"https://xeno-canto.org/{rec.get('id')}" if rec.get("id") else "",
+        "quality": rec.get("q") or "",
+        "length": rec.get("length") or "",
+        "type": rec.get("type") or "",
         "source": "xeno-canto",
     }
     _CALL_CACHE[key] = result
