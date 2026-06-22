@@ -240,15 +240,54 @@ body.view-grid #statusText {
    block, and the live-grid is hard-coded to 4 columns which overflows
    below ~720px. Tighten everything for portrait phones. */
 @media (max-width: 760px) {
-  /* Masthead: add a soft opaque backing so content underneath doesn't
-     read through, and shrink the type so the brand + status pill fit
-     across a 320–430 viewport without overlapping. */
+  /* Kill the 200vw horizontal layout on phone. Upstream renders both pages
+     side-by-side inside a 200vw flex container and slides it with
+     translateX to reveal page 2. The off-screen panel still paints and
+     still bloats document scrollWidth to 2× viewport — under iOS
+     rubber-band scrolling it can be dragged into view. On phone, stack the
+     two pages absolutely and crossfade with .show-detail instead. */
+  .pages {
+    width: 100vw !important;
+    transform: none !important;
+    transition: none !important;
+    overflow: hidden;
+  }
+  .pages.show-detail { transform: none !important; }
+  .page {
+    position: absolute !important;
+    inset: 0;
+    width: 100% !important;
+    height: 100% !important;
+    transition: opacity .32s ease, transform .32s ease;
+  }
+  .pages > .page:nth-child(2) {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(20px);
+  }
+  .pages.show-detail > .page:nth-child(1) {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-20px);
+  }
+  .pages.show-detail > .page:nth-child(2) {
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
+
+  /* Masthead: stack to two rows so the brand gets the full width — at
+     375px there isn't room for "The Garden Register" + "Birds heard here
+     · 21 June 2026" + "LIVE · N SPECIES TODAY" on one row without
+     truncating something important. Keep the status pill right-aligned on
+     its own row so it stays one-thumb reachable as a mode toggle. */
   .masthead {
-    padding: calc(env(safe-area-inset-top, 0px) + 12px) 14px 12px !important;
-    gap: 10px;
-    /* Solid backing on phone — page 2's description scrolls inside .detail,
-       and a translucent gradient lets that text bleed through the title
-       block. Keep it opaque so the masthead reliably hides what's under it. */
+    flex-direction: column !important;
+    align-items: stretch !important;
+    padding: calc(env(safe-area-inset-top, 0px) + 10px) 14px 9px !important;
+    gap: 3px !important;
+    /* Solid backing on phone — page 2's description scrolls and would
+       otherwise bleed through a translucent header. */
     background: #f5ecd9;
     box-shadow: 0 6px 14px -10px rgba(40, 30, 12, .35);
   }
@@ -256,27 +295,37 @@ body.view-grid #statusText {
     background: #1c1812;
     box-shadow: 0 6px 14px -10px rgba(0, 0, 0, .65);
   }
-  .brand { gap: 9px; min-width: 0; flex: 1 1 auto; }
+  .brand { gap: 9px; min-width: 0; }
   .brand svg { width: 20px; height: 20px; margin-top: 1px; }
   .brand .titles { min-width: 0; }
   .brand .name { font-size: 17px !important; }
   .brand .context { font-size: 13px !important; }
+  /* Status pill on its own row, hugging the right edge — bumped from 10px
+     to 12px to meet the Apple HIG 11pt minimum. */
   .status {
+    align-self: flex-end;
     flex: none;
-    font-size: 10px !important;
-    letter-spacing: .12em !important;
-    margin-top: 4px;
+    font-size: 12px !important;
+    letter-spacing: .08em !important;
+    margin-top: 0;
   }
   .status-toggle { padding: 4px 6px; margin: -4px -6px; }
 
   /* Journal hero: shrink the bird frame and push it below the masthead
-     so the title block isn't fighting the image for space. */
+     so the title block isn't fighting the image for space. The .page is
+     made scrollable below so the "today's activity" chart at the bottom
+     of .entry is reachable on short viewports (SE 667h clipped it). */
+  .page {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
   .stage {
     padding-top: 96px !important;
-    padding-bottom: 76px !important;  /* clear the .pageturn.more footer bar */
+    padding-bottom: 96px !important;  /* clear the fixed .pageturn footer */
     gap: 14px !important;
     height: auto !important;
-    min-height: 100vh;
+    min-height: 100%;
   }
   .frame {
     max-width: 62vw !important;
@@ -287,26 +336,29 @@ body.view-grid #statusText {
   .pageturn.more { right: 18px !important; bottom: 18px !important; }
   .pageturn.back { left: 18px !important; bottom: 18px !important; }
 
-  /* Detail page (page 2): stack image above text, allow internal vertical
-     scrolling, and give the title block enough top padding to clear the
-     fixed masthead so the species name isn't clipped behind it. */
+  /* Detail page (page 2): stack image above text and give the title block
+     enough top padding to clear the fixed masthead. .page is the scroll
+     container now (above), so .detail uses intrinsic height — nested
+     scrollers fight iOS gesture handling and the inner scroll position
+     gets lost when .page crossfades. */
   .detail {
     flex-direction: column !important;
     align-items: stretch !important;
     justify-content: flex-start !important;
     gap: 18px !important;
-    height: 100vh !important;
-    overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch;
+    height: auto !important;
+    min-height: 100%;
+    overflow: visible !important;
     padding: 96px 18px 110px !important;  /* bottom clears the .pageturn.back chip */
-    scroll-padding-top: 96px;
   }
-  /* The back/more buttons live inside .page, not .detail, so they don't
-     scroll with the content. On phone, where there's no margin to spare,
-     promote them to a full-width footer strip with solid backing — that
-     way bottom content can't read through them, and the tap target spans
-     the side of the screen rather than a tiny pill. */
+  /* The back/more buttons live inside .page, not .detail. On phone, where
+     there's no margin to spare, promote them to a full-width footer strip
+     with solid backing — that way bottom content can't read through them,
+     and the tap target spans the side of the screen rather than a tiny
+     pill. Pin to viewport (not page) so they don't scroll with the
+     now-scrollable .page content. */
   .pageturn.more, .pageturn.back {
+    position: fixed !important;
     bottom: 0 !important;
     left: 0 !important;
     right: 0 !important;
@@ -314,6 +366,7 @@ body.view-grid #statusText {
     background: #f5ecd9;
     box-shadow: 0 -8px 18px -12px rgba(40, 30, 12, .45);
     border-radius: 0;
+    z-index: 6;
   }
   .pageturn.more { justify-content: flex-end; }
   .pageturn.back { justify-content: flex-start; }
@@ -388,12 +441,13 @@ body.view-grid #statusText {
   }
 }
 
-/* Extra-tight breakpoint for ~320–360px (iPhone SE, small Androids). */
+/* Extra-tight breakpoint for ~320–360px (small Androids — iPhone SE is
+   375px and hits the main phone rules above). */
 @media (max-width: 360px) {
   .brand svg { display: none; }
   .brand .name { font-size: 16px !important; }
   .brand .context { font-size: 12px !important; }
-  .status { font-size: 9.5px !important; }
+  .status { font-size: 10.5px !important; letter-spacing: .06em !important; }
   .live-grid { padding: 5rem .75rem 1.25rem; gap: 1rem .75rem; }
   .tile-img { width: 38vw; }
 }

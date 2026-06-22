@@ -14,7 +14,12 @@
 (function(){
   const VIEW_KEY    = "merlin.view";   // "journal" | "grid"
   const MAX_TILES   = 8;
-  const TILE_TTL_MS = 60 * 1000;       // how long a detection stays on screen
+  // Longer TTL keeps the grid populated through normal lulls. 60s was too
+  // tight: a user opening the dashboard on their phone during a 2-minute
+  // quiet stretch would see only "Listening…" even though birds had just
+  // been calling. 5 min keeps recent activity on screen without letting
+  // truly stale tiles linger.
+  const TILE_TTL_MS = 5 * 60 * 1000;
   const FADE_MS     = 1400;            // tail of the TTL spent fading out
   const SWEEP_MS    = 500;             // how often we re-check expiry
 
